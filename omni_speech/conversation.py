@@ -23,6 +23,7 @@ from PIL import Image
 
 class SeparatorStyle(Enum):
     """Different separator style."""
+
     TWO = auto()
     PLAIN = auto()
     LLAMA_2 = auto()
@@ -32,6 +33,7 @@ class SeparatorStyle(Enum):
 @dataclasses.dataclass
 class Conversation:
     """A class that keeps all conversation history."""
+
     system: str
     roles: List[str]
     messages: List[List[str]]
@@ -64,7 +66,11 @@ class Conversation:
                 else:
                     ret += role + ":"
         elif self.sep_style == SeparatorStyle.LLAMA_3:
-            wrap_sys = lambda msg: f"<|start_header_id|>system<|end_header_id|>\n\n{msg}<|eot_id|>" if len(msg) > 0 else msg
+            wrap_sys = lambda msg: (
+                f"<|start_header_id|>system<|end_header_id|>\n\n{msg}<|eot_id|>"
+                if len(msg) > 0
+                else msg
+            )
             ret = "<|begin_of_text|>" + wrap_sys(self.system)
             for i, (role, message) in enumerate(messages):
                 if message:
@@ -76,7 +82,9 @@ class Conversation:
                     ret += f"<|start_header_id|>{role}<|end_header_id|>\n\n"
             return ret
         elif self.sep_style == SeparatorStyle.LLAMA_2:
-            wrap_sys = lambda msg: f"<<SYS>>\n{msg}\n<</SYS>>\n\n" if len(msg) > 0 else msg
+            wrap_sys = lambda msg: (
+                f"<<SYS>>\n{msg}\n<</SYS>>\n\n" if len(msg) > 0 else msg
+            )
             wrap_inst = lambda msg: f"[INST] {msg} [/INST]"
             ret = ""
 
@@ -114,10 +122,10 @@ class Conversation:
 
     def append_message(self, role, message):
         self.messages.append([role, message])
-    
+
     def to_gradio_chatbot(self):
         ret = []
-        for i, (role, msg) in enumerate(self.messages[self.offset:]):
+        for i, (role, msg) in enumerate(self.messages[self.offset :]):
             if i % 2 == 0:
                 if type(msg) is tuple:
                     msg, speech = msg
@@ -137,14 +145,17 @@ class Conversation:
             sep_style=self.sep_style,
             sep=self.sep,
             sep2=self.sep2,
-            version=self.version)
+            version=self.version,
+        )
 
     def dict(self):
         if len(self.get_images()) > 0:
             return {
                 "system": self.system,
                 "roles": self.roles,
-                "messages": [[x, y[0] if type(y) is tuple else y] for x, y in self.messages],
+                "messages": [
+                    [x, y[0] if type(y) is tuple else y] for x, y in self.messages
+                ],
                 "offset": self.offset,
                 "sep": self.sep,
                 "sep2": self.sep2,
@@ -158,8 +169,10 @@ class Conversation:
             "sep2": self.sep2,
         }
 
+
 conv_vicuna_v1 = Conversation(
-    system="A chat between a curious user and an artificial intelligence assistant. " "The assistant gives helpful, detailed, and polite answers to the user's questions.",
+    system="A chat between a curious user and an artificial intelligence assistant. "
+    "The assistant gives helpful, detailed, and polite answers to the user's questions.",
     roles=("USER", "ASSISTANT"),
     version="v1",
     messages=[],
@@ -170,7 +183,9 @@ conv_vicuna_v1 = Conversation(
 )
 
 conv_llama_2 = Conversation(
-    system="You are a helpful language and speech assistant. " "You are able to understand the speech content that the user provides, " "and assist the user with a variety of tasks using natural language.",
+    system="You are a helpful language and speech assistant. "
+    "You are able to understand the speech content that the user provides, "
+    "and assist the user with a variety of tasks using natural language.",
     roles=("USER", "ASSISTANT"),
     version="llama_v2",
     messages=[],
@@ -181,21 +196,22 @@ conv_llama_2 = Conversation(
 )
 
 conv_llama_3 = Conversation(
-    system="You are a helpful language and speech assistant. " "You are able to understand the speech content that the user provides, " "and assist the user with a variety of tasks using natural language.",
+    system="You are a helpful language and speech assistant. "
+    "You are able to understand the speech content that the user provides, "
+    "and assist the user with a variety of tasks using natural language.",
     roles=("user", "assistant"),
     version="llama_v3",
     messages=[],
     offset=0,
     sep_style=SeparatorStyle.LLAMA_3,
     sep="",
-    sep2="<|eot_id|>"
+    sep2="<|eot_id|>",
 )
 
 conv_plain = Conversation(
     system="",
     roles=("", ""),
-    messages=(
-    ),
+    messages=(),
     offset=0,
     sep_style=SeparatorStyle.PLAIN,
     sep="</s>",

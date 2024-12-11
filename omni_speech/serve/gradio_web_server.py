@@ -71,8 +71,7 @@ def load_demo_refresh_model_list(request: gr.Request):
     models = get_model_list()
     state = default_conversation.copy()
     dropdown_update = gr.Dropdown(
-        choices=models,
-        value=models[0] if len(models) > 0 else ""
+        choices=models, value=models[0] if len(models) > 0 else ""
     )
     return state, dropdown_update
 
@@ -85,16 +84,24 @@ def clear_history(request: gr.Request):
 
 def add_speech(state, speech, request: gr.Request):
     text = "Please directly answer the questions in the user's speech."
-    text = '<speech>\n' + text
+    text = "<speech>\n" + text
     text = (text, speech)
     state = default_conversation.copy()
     state.append_message(state.roles[0], text)
     state.append_message(state.roles[1], None)
     state.skip_next = False
-    return (state)
+    return state
 
 
-def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_size, request: gr.Request):
+def http_bot(
+    state,
+    model_selector,
+    temperature,
+    top_p,
+    max_new_tokens,
+    chunk_size,
+    request: gr.Request,
+):
     logger.info(f"http_bot. ip: {request.client.host}")
     start_tstamp = time.time()
     model_name = model_selector
@@ -114,8 +121,9 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_si
 
     # Query worker address
     controller_url = args.controller_url
-    ret = requests.post(controller_url + "/get_worker_address",
-            json={"model": model_name})
+    ret = requests.post(
+        controller_url + "/get_worker_address", json={"model": model_name}
+    )
     worker_addr = ret.json()["address"]
     logger.info(f"model_name: {model_name}, worker_addr: {worker_addr}")
 
@@ -151,15 +159,20 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_si
 
     try:
         # Stream output
-        response = requests.post(worker_addr + "/worker_generate_stream",
-            headers=headers, json=pload, stream=True, timeout=10)
+        response = requests.post(
+            worker_addr + "/worker_generate_stream",
+            headers=headers,
+            json=pload,
+            stream=True,
+            timeout=10,
+        )
         num_generated_units = 0
         wav_list = []
         for chunk in response.iter_lines(decode_unicode=False, delimiter=b"\0"):
             if chunk:
                 data = json.loads(chunk.decode())
                 if data["error_code"] == 0:
-                    output = data["text"][len(prompt):].strip()
+                    output = data["text"][len(prompt) :].strip()
                     output_unit = list(map(int, data["unit"].strip().split()))
                     state.messages[-1][-1] = (output, data["unit"].strip())
 
@@ -177,7 +190,12 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_si
                     else:
                         return_value = None
 
-                    yield (state, state.messages[-1][-1][0], state.messages[-1][-1][1], return_value)
+                    yield (
+                        state,
+                        state.messages[-1][-1][0],
+                        state.messages[-1][-1][1],
+                        return_value,
+                    )
                 else:
                     output = data["text"] + f" (error_code: {data['error_code']})"
                     state.messages[-1][-1] = output
@@ -192,12 +210,10 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_si
     if num_generated_units < len(output_unit):
         new_units = output_unit[num_generated_units:]
         num_generated_units = len(output_unit)
-        x = {
-            "code": torch.LongTensor(new_units).view(1, -1).cuda()
-        }
+        x = {"code": torch.LongTensor(new_units).view(1, -1).cuda()}
         wav = vocoder(x, True)
         wav_list.append(wav.detach().cpu().numpy())
-    
+
     if len(wav_list) > 0:
         wav_full = np.concatenate(wav_list)
         return_value = (16000, wav_full)
@@ -211,9 +227,9 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, chunk_si
     logger.info(f"{output_unit}")
 
 
-title_markdown = ("""
+title_markdown = """
 # 🎧 LLaMA-Omni: Seamless Speech Interaction with Large Language Models
-""")
+"""
 
 block_css = """
 
@@ -223,8 +239,11 @@ block_css = """
 
 """
 
+
 def build_demo(embed_mode, vocoder, cur_dir=None, concurrency_count=10):
-    with gr.Blocks(title="LLaMA-Omni Speech Chatbot", theme=gr.themes.Default(), css=block_css) as demo:
+    with gr.Blocks(
+        title="LLaMA-Omni Speech Chatbot", theme=gr.themes.Default(), css=block_css
+    ) as demo:
         state = gr.State()
 
         if not embed_mode:
@@ -236,57 +255,93 @@ def build_demo(embed_mode, vocoder, cur_dir=None, concurrency_count=10):
                 value=models[0] if len(models) > 0 else "",
                 interactive=True,
                 show_label=False,
-                container=False)
+                container=False,
+            )
 
         with gr.Row():
-            audio_input_box = gr.Audio(sources=["upload", "microphone"], label="Speech Input")
+            audio_input_box = gr.Audio(
+                sources=["upload", "microphone"], label="Speech Input"
+            )
             with gr.Accordion("Parameters", open=True) as parameter_row:
-                temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.0, step=0.1, interactive=True, label="Temperature",)
-                top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P",)
-                max_output_tokens = gr.Slider(minimum=0, maximum=1024, value=512, step=64, interactive=True, label="Max Output Tokens",)
-                chunk_size = gr.Slider(minimum=10, maximum=500, value=40, step=10, interactive=True, label="Chunk Size",)
+                temperature = gr.Slider(
+                    minimum=0.0,
+                    maximum=1.0,
+                    value=0.0,
+                    step=0.1,
+                    interactive=True,
+                    label="Temperature",
+                )
+                top_p = gr.Slider(
+                    minimum=0.0,
+                    maximum=1.0,
+                    value=0.7,
+                    step=0.1,
+                    interactive=True,
+                    label="Top P",
+                )
+                max_output_tokens = gr.Slider(
+                    minimum=0,
+                    maximum=1024,
+                    value=512,
+                    step=64,
+                    interactive=True,
+                    label="Max Output Tokens",
+                )
+                chunk_size = gr.Slider(
+                    minimum=10,
+                    maximum=500,
+                    value=40,
+                    step=10,
+                    interactive=True,
+                    label="Chunk Size",
+                )
 
         if cur_dir is None:
             cur_dir = os.path.dirname(os.path.abspath(__file__))
-        gr.Examples(examples=[
-            [f"{cur_dir}/examples/vicuna_1.wav"],
-            [f"{cur_dir}/examples/vicuna_2.wav"],
-            [f"{cur_dir}/examples/vicuna_3.wav"],
-            [f"{cur_dir}/examples/vicuna_4.wav"],
-            [f"{cur_dir}/examples/vicuna_5.wav"],
-            [f"{cur_dir}/examples/helpful_base_1.wav"],
-            [f"{cur_dir}/examples/helpful_base_2.wav"],
-            [f"{cur_dir}/examples/helpful_base_3.wav"],
-            [f"{cur_dir}/examples/helpful_base_4.wav"],
-            [f"{cur_dir}/examples/helpful_base_5.wav"],
-        ], inputs=[audio_input_box])
+        gr.Examples(
+            examples=[
+                [f"{cur_dir}/examples/vicuna_1.wav"],
+                [f"{cur_dir}/examples/vicuna_2.wav"],
+                [f"{cur_dir}/examples/vicuna_3.wav"],
+                [f"{cur_dir}/examples/vicuna_4.wav"],
+                [f"{cur_dir}/examples/vicuna_5.wav"],
+                [f"{cur_dir}/examples/helpful_base_1.wav"],
+                [f"{cur_dir}/examples/helpful_base_2.wav"],
+                [f"{cur_dir}/examples/helpful_base_3.wav"],
+                [f"{cur_dir}/examples/helpful_base_4.wav"],
+                [f"{cur_dir}/examples/helpful_base_5.wav"],
+            ],
+            inputs=[audio_input_box],
+        )
 
         with gr.Row():
             submit_btn = gr.Button(value="Send", variant="primary")
             clear_btn = gr.Button(value="Clear")
 
         text_output_box = gr.Textbox(label="Text Output", type="text")
-        unit_output_box = gr.Textbox(label="Unit Output", type="text") 
+        unit_output_box = gr.Textbox(label="Unit Output", type="text")
         audio_output_box = gr.Audio(label="Speech Output")
 
         url_params = gr.JSON(visible=False)
 
-        submit_btn.click(
-            add_speech,
-            [state, audio_input_box],
-            [state]
-        ).then(
+        submit_btn.click(add_speech, [state, audio_input_box], [state]).then(
             http_bot,
             [state, model_selector, temperature, top_p, max_output_tokens, chunk_size],
             [state, text_output_box, unit_output_box, audio_output_box],
-            concurrency_limit=concurrency_count
+            concurrency_limit=concurrency_count,
         )
 
         clear_btn.click(
             clear_history,
             None,
-            [state, audio_input_box, text_output_box, unit_output_box, audio_output_box],
-            queue=False
+            [
+                state,
+                audio_input_box,
+                text_output_box,
+                unit_output_box,
+                audio_output_box,
+            ],
+            queue=False,
         )
 
         if args.model_list_mode == "once":
@@ -294,14 +349,11 @@ def build_demo(embed_mode, vocoder, cur_dir=None, concurrency_count=10):
                 load_demo,
                 [url_params],
                 [state, model_selector],
-                js=get_window_url_params
+                js=get_window_url_params,
             )
         elif args.model_list_mode == "reload":
             demo.load(
-                load_demo_refresh_model_list,
-                None,
-                [state, model_selector],
-                queue=False
+                load_demo_refresh_model_list, None, [state, model_selector], queue=False
             )
         else:
             raise ValueError(f"Unknown model list mode: {args.model_list_mode}")
@@ -324,8 +376,9 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int)
     parser.add_argument("--controller-url", type=str, default="http://localhost:21001")
     parser.add_argument("--concurrency-count", type=int, default=16)
-    parser.add_argument("--model-list-mode", type=str, default="once",
-        choices=["once", "reload"])
+    parser.add_argument(
+        "--model-list-mode", type=str, default="once", choices=["once", "reload"]
+    )
     parser.add_argument("--share", action="store_true")
     parser.add_argument("--moderate", action="store_true")
     parser.add_argument("--embed", action="store_true")
@@ -339,10 +392,6 @@ if __name__ == "__main__":
 
     logger.info(args)
     demo = build_demo(args.embed, vocoder, concurrency_count=args.concurrency_count)
-    demo.queue(
-        api_open=False
-    ).launch(
-        server_name=args.host,
-        server_port=args.port,
-        share=args.share
+    demo.queue(api_open=False).launch(
+        server_name=args.host, server_port=args.port, share=args.share
     )

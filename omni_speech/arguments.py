@@ -15,8 +15,8 @@ class ModelArguments:
     speech_encoder_type: Optional[str] = field(default=None)
     speech_encoder: Optional[str] = field(default=None)
     pretrain_speech_projector: Optional[str] = field(default=None)
-    speech_projector_type: Optional[str] = field(default='linear')
-    speech_generator_type: Optional[str] = field(default='ctc')
+    speech_projector_type: Optional[str] = field(default="linear")
+    speech_generator_type: Optional[str] = field(default="ctc")
     ctc_decoder_config: str = "(2,4096,32,11008)"
     ctc_upsample_factor: int = 1
     ctc_loss_weight: float = 1.0
@@ -27,8 +27,9 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
-    data_path: str = field(default=None,
-                           metadata={"help": "Path to the training data."})
+    data_path: str = field(
+        default=None, metadata={"help": "Path to the training data."}
+    )
     is_multimodal: bool = False
     input_type: str = field(default="mel")
     speech_normalize: bool = False
@@ -44,22 +45,22 @@ class TrainingArguments(transformers.TrainingArguments):
     model_max_length: int = field(
         default=512,
         metadata={
-            "help":
-            "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
+            "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
     )
     double_quant: bool = field(
         default=True,
-        metadata={"help": "Compress the quantization statistics through double quantization."}
+        metadata={
+            "help": "Compress the quantization statistics through double quantization."
+        },
     )
     quant_type: str = field(
         default="nf4",
-        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
+        metadata={
+            "help": "Quantization data type to use. Should be one of `fp4` or `nf4`."
+        },
     )
-    bits: int = field(
-        default=16,
-        metadata={"help": "How many bits to use."}
-    )
+    bits: int = field(default=16, metadata={"help": "How many bits to use."})
     lora_enable: bool = False
     lora_r: int = 64
     lora_alpha: int = 16

@@ -1,6 +1,7 @@
 """
 A model worker executes the model.
 """
+
 import argparse
 import asyncio
 import json
@@ -20,8 +21,7 @@ from functools import partial
 from transformers import PreTrainedTokenizer
 
 from omni_speech.constants import WORKER_HEART_BEAT_INTERVAL
-from omni_speech.utils import (build_logger, server_error_msg,
-    pretty_print_semaphore)
+from omni_speech.utils import build_logger, server_error_msg, pretty_print_semaphore
 from omni_speech.model.builder import load_pretrained_model
 from omni_speech.constants import SPEECH_TOKEN_INDEX, DEFAULT_SPEECH_TOKEN
 from omni_speech.datasets.preprocess import tokenizer_speech_token
@@ -60,6 +60,7 @@ def load_speech(audio, input_type, mel_size, speech_normalize):
 def build_unit_tokenizer(vocab_size):
     import os
     from transformers import BertTokenizer
+
     with open("unit_vocab.txt", "w") as f:
         for i in range(vocab_size + 1):
             f.write(str(i) + "\n")
@@ -69,10 +70,24 @@ def build_unit_tokenizer(vocab_size):
 
 
 class ModelWorker:
-    def __init__(self, controller_addr, worker_addr,
-                 worker_id, no_register,
-                 model_path, model_base, model_name,
-                 load_8bit, load_4bit, device, input_type, mel_size, s2s, is_lora, use_flash_attn=False):
+    def __init__(
+        self,
+        controller_addr,
+        worker_addr,
+        worker_id,
+        no_register,
+        model_path,
+        model_base,
+        model_name,
+        load_8bit,
+        load_4bit,
+        device,
+        input_type,
+        mel_size,
+        s2s,
+        is_lora,
+        use_flash_attn=False,
+    ):
         self.controller_addr = controller_addr
         self.worker_addr = worker_addr
         self.worker_id = worker_id
@@ -81,13 +96,22 @@ class ModelWorker:
         self.input_type = input_type
         self.mel_size = mel_size
         self.tokenizer, self.model, self.context_len = load_pretrained_model(
-            model_path, model_base, is_lora=is_lora, s2s=s2s, load_8bit=load_8bit, load_4bit=load_4bit, device=self.device, use_flash_attn=use_flash_attn)
+            model_path,
+            model_base,
+            is_lora=is_lora,
+            s2s=s2s,
+            load_8bit=load_8bit,
+            load_4bit=load_4bit,
+            device=self.device,
+            use_flash_attn=use_flash_attn,
+        )
         self.unit_tokenizer = build_unit_tokenizer(self.model.config.unit_vocab_size)
 
         if not no_register:
             self.register_to_controller()
             self.heart_beat_thread = threading.Thread(
-                target=heart_beat_worker, args=(self,), daemon=True)
+                target=heart_beat_worker, args=(self,), daemon=True
+            )
             self.heart_beat_thread.start()
 
     def register_to_controller(self):
@@ -97,23 +121,30 @@ class ModelWorker:
         data = {
             "worker_name": self.worker_addr,
             "check_heart_beat": True,
-            "worker_status": self.get_status()
+            "worker_status": self.get_status(),
         }
         r = requests.post(url, json=data)
         assert r.status_code == 200
 
     def send_heart_beat(self):
-        logger.info(f"Send heart beat. Models: {[self.model_name]}. "
-                    f"Semaphore: {pretty_print_semaphore(model_semaphore)}. "
-                    f"global_counter: {global_counter}")
+        logger.info(
+            f"Send heart beat. Models: {[self.model_name]}. "
+            f"Semaphore: {pretty_print_semaphore(model_semaphore)}. "
+            f"global_counter: {global_counter}"
+        )
 
         url = self.controller_addr + "/receive_heart_beat"
 
         while True:
             try:
-                ret = requests.post(url, json={
-                    "worker_name": self.worker_addr,
-                    "queue_length": self.get_queue_length()}, timeout=5)
+                ret = requests.post(
+                    url,
+                    json={
+                        "worker_name": self.worker_addr,
+                        "queue_length": self.get_queue_length(),
+                    },
+                    timeout=5,
+                )
                 exist = ret.json()["exist"]
                 break
             except requests.exceptions.RequestException as e:
@@ -127,8 +158,15 @@ class ModelWorker:
         if model_semaphore is None:
             return 0
         else:
-            return args.limit_model_concurrency - model_semaphore._value + (len(
-                model_semaphore._waiters) if model_semaphore._waiters is not None else 0)
+            return (
+                args.limit_model_concurrency
+                - model_semaphore._value
+                + (
+                    len(model_semaphore._waiters)
+                    if model_semaphore._waiters is not None
+                    else 0
+                )
+            )
 
     def get_status(self):
         return {
@@ -145,8 +183,15 @@ class ModelWorker:
         ori_prompt = prompt
         audio = params.get("audio", None)
         if audio is not None and len(audio) > 0:
-            speech = load_speech(audio, self.input_type, self.mel_size, self.model.config.speech_normalize)
-            speech_length = torch.LongTensor([speech.shape[0]]).unsqueeze(0).to(self.device)
+            speech = load_speech(
+                audio,
+                self.input_type,
+                self.mel_size,
+                self.model.config.speech_normalize,
+            )
+            speech_length = (
+                torch.LongTensor([speech.shape[0]]).unsqueeze(0).to(self.device)
+            )
             speech_tensor = speech.unsqueeze(0).to(self.device, dtype=torch.float16)
             speech_args = {"speech": speech_tensor, "speech_lengths": speech_length}
         else:
@@ -155,33 +200,50 @@ class ModelWorker:
 
         temperature = float(params.get("temperature", 1.0))
         top_p = float(params.get("top_p", 1.0))
-        max_context_length = getattr(model.config, 'max_position_embeddings', 2048)
+        max_context_length = getattr(model.config, "max_position_embeddings", 2048)
         max_new_tokens = min(int(params.get("max_new_tokens", 256)), 1024)
         stop_str = params.get("stop", None)
         do_sample = True if temperature > 0.001 else False
 
-        input_ids = tokenizer_speech_token(prompt, tokenizer, return_tensors='pt').unsqueeze(0).to(self.device)
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=15)
-        streamer_unit = TextIteratorStreamer(self.unit_tokenizer, skip_prompt=False, skip_special_tokens=True, timeout=15)
+        input_ids = (
+            tokenizer_speech_token(prompt, tokenizer, return_tensors="pt")
+            .unsqueeze(0)
+            .to(self.device)
+        )
+        streamer = TextIteratorStreamer(
+            tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=15
+        )
+        streamer_unit = TextIteratorStreamer(
+            self.unit_tokenizer, skip_prompt=False, skip_special_tokens=True, timeout=15
+        )
 
         # max_new_tokens = min(max_new_tokens, max_context_length - input_ids.shape[-1] - num_image_tokens)
 
         if max_new_tokens < 1:
-            yield json.dumps({"text": ori_prompt + "Exceeds max token length. Please start a new conversation, thanks.", "error_code": 0}).encode() + b"\0"
+            yield json.dumps(
+                {
+                    "text": ori_prompt
+                    + "Exceeds max token length. Please start a new conversation, thanks.",
+                    "error_code": 0,
+                }
+            ).encode() + b"\0"
             return
 
-        thread = Thread(target=model.generate, kwargs=dict(
-            inputs=input_ids,
-            do_sample=do_sample,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-            streamer=streamer,
-            streamer_unit=streamer_unit,
-            streaming_unit_gen=True,
-            use_cache=True,
-            **speech_args
-        ))
+        thread = Thread(
+            target=model.generate,
+            kwargs=dict(
+                inputs=input_ids,
+                do_sample=do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                streamer=streamer,
+                streamer_unit=streamer_unit,
+                streaming_unit_gen=True,
+                use_cache=True,
+                **speech_args,
+            ),
+        )
         thread.start()
 
         generated_text = ori_prompt
@@ -189,8 +251,10 @@ class ModelWorker:
             generated_text += new_text
             generated_unit = " ".join(map(str, streamer_unit.token_cache))
             if generated_text.endswith(stop_str):
-                generated_text = generated_text[:-len(stop_str)]
-            yield json.dumps({"text": generated_text, "unit": generated_unit, "error_code": 0}).encode() + b"\0"
+                generated_text = generated_text[: -len(stop_str)]
+            yield json.dumps(
+                {"text": generated_text, "unit": generated_unit, "error_code": 0}
+            ).encode() + b"\0"
 
     def generate_stream_gate(self, params):
         try:
@@ -240,7 +304,9 @@ async def generate_stream(request: Request):
     worker.send_heart_beat()
     generator = worker.generate_stream_gate(params)
     background_tasks = BackgroundTasks()
-    background_tasks.add_task(partial(release_model_semaphore, fn=worker.send_heart_beat))
+    background_tasks.add_task(
+        partial(release_model_semaphore, fn=worker.send_heart_beat)
+    )
     return StreamingResponse(generator, background=background_tasks)
 
 
@@ -253,10 +319,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=21002)
-    parser.add_argument("--worker-address", type=str,
-        default="http://localhost:21002")
-    parser.add_argument("--controller-address", type=str,
-        default="http://localhost:21001")
+    parser.add_argument("--worker-address", type=str, default="http://localhost:21002")
+    parser.add_argument(
+        "--controller-address", type=str, default="http://localhost:21001"
+    )
     parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--model-name", type=str)
@@ -274,19 +340,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.info(f"args: {args}")
 
-    worker = ModelWorker(args.controller_address,
-                         args.worker_address,
-                         worker_id,
-                         args.no_register,
-                         args.model_path,
-                         args.model_base,
-                         args.model_name,
-                         args.load_8bit,
-                         args.load_4bit,
-                         args.device,
-                         args.input_type,
-                         args.mel_size,
-                         args.s2s,
-                         args.is_lora,
-                         use_flash_attn=args.use_flash_attn)
+    worker = ModelWorker(
+        args.controller_address,
+        args.worker_address,
+        worker_id,
+        args.no_register,
+        args.model_path,
+        args.model_base,
+        args.model_name,
+        args.load_8bit,
+        args.load_4bit,
+        args.device,
+        args.input_type,
+        args.mel_size,
+        args.s2s,
+        args.is_lora,
+        use_flash_attn=args.use_flash_attn,
+    )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

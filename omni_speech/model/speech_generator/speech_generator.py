@@ -15,7 +15,9 @@ def lengths_to_padding_mask(lens):
 
 
 def _uniform_assignment(src_lens, tgt_lens):
-    tgt_indices = torch.arange(torch.max(tgt_lens)).expand(len(tgt_lens), -1).to(tgt_lens.device)
+    tgt_indices = (
+        torch.arange(torch.max(tgt_lens)).expand(len(tgt_lens), -1).to(tgt_lens.device)
+    )
     ratio = tgt_lens / src_lens
     index_t = (tgt_indices / ratio.view(-1, 1)).long()
     return index_t
@@ -24,7 +26,9 @@ def _uniform_assignment(src_lens, tgt_lens):
 class SpeechGeneratorCTC(nn.Module):
     def __init__(self, config):
         super().__init__()
-        n_layers, n_dims, n_heads, n_inter_dims = list(map(int, config.ctc_decoder_config[1:-1].split(",")))
+        n_layers, n_dims, n_heads, n_inter_dims = list(
+            map(int, config.ctc_decoder_config[1:-1].split(","))
+        )
         _config = copy.deepcopy(config)
         _config.hidden_size = n_dims
         _config.num_hidden_layers = n_layers
@@ -54,19 +58,24 @@ class SpeechGeneratorCTC(nn.Module):
         copied_reps = torch.gather(
             reps,
             1,
-            mapped_inputs.unsqueeze(-1).expand(
-                *mapped_inputs.size(), reps.size(-1)
-            ),
+            mapped_inputs.unsqueeze(-1).expand(*mapped_inputs.size(), reps.size(-1)),
         )
         copied_reps = copied_reps.masked_fill(padding_mask.unsqueeze(-1), 0)
-        position_ids = torch.arange(0, max(up_lens)).unsqueeze(0).expand(len(reps), -1).to(device=copied_reps.device)
+        position_ids = (
+            torch.arange(0, max(up_lens))
+            .unsqueeze(0)
+            .expand(len(reps), -1)
+            .to(device=copied_reps.device)
+        )
         return copied_reps, ~padding_mask, position_ids
-    
+
     def forward(self, tgt_reps, labels, tgt_units):
         tgt_label_reps = []
         for tgt_rep, label in zip(tgt_reps, labels):
             tgt_label_reps.append(tgt_rep[label != IGNORE_INDEX])
-        hidden_states, attention_mask, position_ids = self.upsample(tgt_label_reps, tgt_units)
+        hidden_states, attention_mask, position_ids = self.upsample(
+            tgt_label_reps, tgt_units
+        )
         hidden_states = self.input_proj(hidden_states)
         for layer in self.layers:
             layer_outputs = layer(
@@ -88,11 +97,11 @@ class SpeechGeneratorCTC(nn.Module):
             ctc_tgt_lens,
             reduction="sum",
             zero_infinity=True,
-            blank=self.unit_vocab_size
+            blank=self.unit_vocab_size,
         )
         ctc_loss /= ctc_tgt_lens.sum().item()
         return ctc_loss
-    
+
     def predict(self, tgt_reps):
         hidden_states, attention_mask, position_ids = self.upsample([tgt_reps])
         hidden_states = self.input_proj(hidden_states)
@@ -105,5 +114,7 @@ class SpeechGeneratorCTC(nn.Module):
             hidden_states = layer_outputs[0]
         ctc_logits = self.output_proj(hidden_states)
         ctc_lprobs = F.log_softmax(ctc_logits.float(), dim=-1, dtype=torch.float32)
-        ctc_pred = ctc_lprobs.argmax(dim=-1).masked_fill_(~attention_mask, self.unit_vocab_size)
+        ctc_pred = ctc_lprobs.argmax(dim=-1).masked_fill_(
+            ~attention_mask, self.unit_vocab_size
+        )
         return ctc_pred
